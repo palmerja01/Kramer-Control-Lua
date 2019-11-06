@@ -1,3 +1,4 @@
+--Calendar category from DDE on November 5th 2019
 REMOVE = ""
 
 function initialize()

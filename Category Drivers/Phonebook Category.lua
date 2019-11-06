@@ -1,3 +1,4 @@
+-- Proof of concept for phonebook category
 NEW = "New"
 REMOVE_ENTRY = ""
 NAME_REGEX = "[%w_]+"
