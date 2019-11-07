@@ -1,42 +1,19 @@
--- Proof of concept for phonebook category
-NEW = "New"
-REMOVE_ENTRY = ""
-NAME_REGEX = "[%w_]+"
-
--- Feedback Prefix
-PHONEBOOK_PREFIX = "Entry:"
+REMOVE = ""
+FB_PREFIX = "Entry: "
 
 function initialize()
     _id = "PHONEBOOK"
-    _phonebookEntry = {}
+    _phonebook = {}
     _macros = {}
-    _macros.macros = {}
-    _macros.macros[1] = {reference_id="INITIALIZATION"}
-    _macros.macros[1].elements = {}
-    local triggerCommand = {category_id=_id, capability_id="PHONEBOOK", command_id="QUERY_PHONEBOOK"}
-    _macros.macros[1].elements[1] = {trigger_command=triggerCommand}
-  
 end
 
-function getMacros ()
-    return toJSON(_macros)
-end
-
-function queryAllKeys(stateId)
-    local keysObj = {}
-    local keysArray = {}
-    if stateId == "PHONEBOOK" then
-        for k,_ in pairs(_phonebookEntry) do
-            table.insert(keysArray, k)
-        end
-    end
-    keysObj.keys = keysArray
-    return toJSON(keysObj)
+function getMacros()
+   return toJSON(_macros)
 end
 
 function queryStateValue (stateId, stateKey)
     if stateId == "PHONEBOOK" then
-        return _phonebookEntry[stateKey], _phonebookEntry[stateKey]
+        return _phonebook[stateKey], _phonebook[stateKey]
     end
     return nil, nil
 end
@@ -44,25 +21,49 @@ end
 function applyStateChange (stateChange, isVirtual)
     if stateChange.category_id ~= _id then return false end
     local hasChanged = false
+    local prevValue
     if stateChange.state_id == "PHONEBOOK" then
-        local prevValue = _phonebookEntry[stateChange.state_key]
-        if stateChange.state_value == REMOVE_ENTRY then
-            _phonebookEntry[stateChange.state_key] = nil
-        else
-            _phonebookEntry[stateChange.state_key] = stateChange.state_value
-        end
-
-        hasChanged = (prevValue ~= _phonebookEntry[stateChange.state_key])
+        prevValue = _phonebook[stateChange.state_key]
+        _phonebook[stateChange.state_key] = stateChange.state_value
+        hasChanged = (prevValue ~= _phonebook[stateChange.state_key])
     end
     return hasChanged
 end
 
-function processFeedback (feedbacks, commType, linkedfeedback)
+
+function executeDialPhonebook(args)
+    if args.NAME == nil then return false end
+    local number = _phonebook[args.NAME]
+    table.insert(codesArray, "Dial " .. number)
+    return true
+end
+
+function getExecutionResult(availableProtocols, capabilityId, commandId, args)
+    codesArray = {}
+    stateChanges = {}
+
+    if commandId == "QUERY_PHONEBOOK" then
+        table.insert(codesArray, "Query Phonebook Lua Command")
+    elseif commandId == "DIAL_PHONEBOOK" then
+        executeDialPhonebook(args)
+    end
+
+    local genericCommType = "TCP_UDP"
+    local codesObj = {codes=codesArray};
+    local stateChangesObj = {state_changes=stateChanges}
+    local linkedFeedbackId = ""
+    local triggeredMacroObj = {}
+    return genericCommType, toJSON(codesObj), toJSON(stateChangesObj), linkedFeedbackId,  toJSON(triggeredMacroObj)
+end
+
+
+function processFeedback (feedbacks, commType, previousCommand)
     stateChanges = {}
     local matches = {}
     triggeredAction = {}
+    
     for i,v in ipairs(feedbacks) do
-        matches[i] = processFeedbackCode(v, i)
+        matches[i] = processFeedbackCode(v, commType)
     end
     local matchesObj = {matches=matches}
     local stateChangesObj = {state_changes=stateChanges}
@@ -71,11 +72,11 @@ end
 
 function processFeedbackCode (feedbackCode, commType)
     if isTCP_UDP(commType) or isSERIAL(commType) then
-        local i, j, entry = string.find(feedbackCode, "^(%w+)|.*$")
+        local i, j, c = string.find(feedbackCode, "^(%w+): .*$")
         if i == nil then return false end
 
-        if entry == PHONEBOOK_PREFIX then
-            return processPhonebookFeedback(feedbackCode)
+        if c == "Entry" then
+            return processNewEntry(feedbackCode)
         else
             return false
         end
@@ -84,95 +85,24 @@ function processFeedbackCode (feedbackCode, commType)
     end
 end
 
-function processPhonebookFeedback(feedbackCode)
-    if queriedEntry == nil then return false end
+function processNewEntry(feedbackCode)
+    local i, j, n, p = string.find(feedbackCode, "^" .. "Entry: " .. "(.*),(.*)")
+    if i == nil then return false end
+        name = n
+        phone = p
+            local stateChange = {category_id=_id,
+                                 state_id="PHONEBOOK",
+                                 state_key=name,
+                                 state_value=phone}
+            table.insert(stateChanges, stateChange)
+    return true
+end
 
-    local i, j, name, number = string.find(feedbackCode, "^" .. PHONEBOOK_PREFIX .. "(" .. NAME_REGEX .. "),(%w+)")
-    local newEntry = NEW
-    if i == nil then
-        newEntry = REMOVE_ENTRY
-    else
-        newEntry = number
-        end
-    end
 
+function clearStates(key)    --Removes items from the state array if there is no longer a meeting at the key.
     local stateChange = {category_id=_id,
                          state_id="PHONEBOOK",
-                         state_key=name,
-                         state_value=newEntry}
+                         state_key=tostring(key),
+                         state_value=nil}
     table.insert(stateChanges, stateChange)
-
-    return true
-end
-
-function getExecutionResult (availableProtocols, capabilityId, commandId, args)
-    codes = {}
-    virtualStateChanges = {}
-    local commType = ""
-    local valid = true
-    local linkedFeedbackId = ""
-    triggeredAction = {}
-    if checkArrayForFunctionMatch(availableProtocols, isTCP_UDP) then
-        commType = TCP_UDP
-    elseif checkArrayForFunctionMatch(availableProtocols, isSERIAL) then
-        commType = SERIAL
-    elseif checkArrayForFunctionMatch(availableProtocols, isIR) then
-        commType = IR
-    end
-    if capabilityId == "PHONEBOOK" then
-        if commandId == "DIAL_PHONEBOOK" then
-            if commType == TCP_UDP or commType == SERIAL then
-                valid = executeDialPhonebook(args)
-            end
-        elseif commandId == "QUERY_PHONEBOOK" then
-            if commType == TCP_UDP or commType == SERIAL then
-                valid = executeQueryPhonebook(args)
-                linkedFeedbackId = "PHONEBOOK_ENTRIES"
-            end
-        end
-    end
-
-    local codesObj = {codes=codes}
-    local stateChangesObj = {state_changes=virtualStateChanges}
-    if valid then
-        return commType, toJSON(codesObj), toJSON(stateChangesObj),
-                linkedFeedbackId, toJSON(triggeredAction)
-    else
-        return "", "{ \"codes\": [] }", "{ \"state_changes\": [] }",
-                "", "{}"
-    end
-end
-
-
-function createCode(command, args)
-    code = "Dialing: " .. args
-    return code
-end
-
-
-function executeToggleStatusCommand(args)
-    if args.USER == nil then return false end
-
-    local newStatus = toggleStatus(_userStatuses[args.USER])
-    if newStatus == _userStatuses[args.USER] then return false end
-
-    codeArgs = {"Set", args.USER, fromFriendlyUserStatus(newStatus)}
-    table.insert(codes, createCode(DISPLAY_STATUS_PREFIX, codeArgs))
-
-    local stateChange = {category_id=_id,
-                         state_id="USER_STATUSES",
-                         state_key=args.USER,
-                         state_value=newStatus}
-    table.insert(virtualStateChanges, stateChange)
-
-    return true
-end
-
-function executeQueryStatusCommand(args)
-    if args.USER == nil then return false end
-
-    codeArgs = {"Get", args.USER}
-    table.insert(codes, createCode(DISPLAY_STATUS_PREFIX, codeArgs))
-
-    return true
 end
