@@ -1,4 +1,5 @@
--- v1.1.5 from DDE on November 5th 2019
+-- VIA Campus v1.1.3 from DDE on November 5th 2019
+
 -- status codes
 INACTIVE = "0"
 INACTIVE_FRIENDLY = "NotPresenting"
@@ -57,7 +58,7 @@ function initialize()
     _macros.macros = {}
     _macros.macros[1] = {reference_id="INITIALIZATION"}
     _macros.macros[1].elements = {}
-    local triggerCommand = {category_id=_id, capability_id="CUSTOM", command_id="QUERY_PHONEBOOK"}
+    local triggerCommand = {category_id=_id, capability_id="CUSTOM", command_id="QUERY_ALL_USERS"}
     _macros.macros[1].elements[1] = {trigger_command=triggerCommand}
 end
 
