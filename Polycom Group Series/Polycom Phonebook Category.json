@@ -1,0 +1,97 @@
+{
+    "name": "Phonebook",
+    "attributes": [],
+    "reference_id": "PHONEBOOK",
+    "capabilities": [
+         {
+              "name": "Phonebook",
+              "attributes": [],
+              "reference_id": "PHONEBOOK",
+              "commands": [
+                   {
+                        "name": "Dial Entry",
+                        "attributes": [],
+                        "reference_id": "DIAL_ENTRY",
+                        "codes": [
+                             {
+                                  "attributes": [],
+                                  "data": "$NAME$",
+                                  "parameters": [],
+                                  "state_references": [
+                                       {
+                                            "name": "NUMBER",
+                                            "state_id": "NUMBER",
+                                            "state_name": "Number",
+                                            "state_key": "$NAME$"
+                                       }
+                                  ],
+                                  "trigger_state_update": [],
+                                  "interface_allowed": [
+                                       "SERIAL",
+                                       "TCP_UDP"
+                                  ],
+                                  "trigger_action": {
+                                       "name": "Trigger Actions",
+                                       "reference_id": "TRIGGER_ACTIONS",
+                                       "elements": []
+                                  }
+                             }
+                        ],
+                        "is_query": false,
+                        "log_cloud": true
+                   },
+                   {
+                        "name": "Query Phonebook",
+                        "attributes": [],
+                        "reference_id": "QUERY_PHONEBOOK",
+                        "codes": [
+                             {
+                                  "attributes": [],
+                                  "data": "QUERY",
+                                  "parameters": [],
+                                  "state_references": [],
+                                  "trigger_state_update": [],
+                                  "interface_allowed": [
+                                       "SERIAL",
+                                       "TCP_UDP"
+                                  ],
+                                  "trigger_action": {
+                                       "name": "Trigger Actions",
+                                       "reference_id": "TRIGGER_ACTIONS",
+                                       "elements": []
+                                  }
+                             }
+                        ],
+                        "is_query": false,
+                        "log_cloud": true
+                   }
+              ],
+              "feedbacks": []
+         }
+    ],
+    "states": [
+         {
+              "name": "Name",
+              "attributes": [],
+              "reference_id": "NAME",
+              "log_changes": true,
+              "dynamic": true,
+              "primitive_type": "string_array",
+              "constraints": {
+                   "possible_values": []
+              }
+         },
+         {
+              "name": "Number",
+              "attributes": [],
+              "reference_id": "NUMBER",
+              "log_changes": true,
+              "primitive_type": "string_array",
+              "constraints": {
+                   "possible_values": []
+              }
+         }
+    ],
+    "macros": [],
+    "lua_code": "debugLine = debug.getinfo(1).currentline - 114\n\nfunction initialize()\n    _id = \"PHONEBOOK\"\n    _name = {}\n    _number = {}\n    _macros = {}\nend\n\nfunction getMacros()\n   return toJSON(_macros)\nend\n\nfunction queryStateValue (stateId, stateKey)\n    if stateId == \"NAME\" then\n        return _name[stateKey], _name[stateKey]\n    elseif stateId == \"NUMBER\" then\n        return _number[stateKey], _number[stateKey]\n    end\n    return nil, nil\nend\n\n\nfunction applyStateChange (stateChange, isVirtual)\n    if stateChange.category_id ~= _id then return false end\n    local hasChanged = false\n    local prevValue\n    if stateChange.state_id == \"NAME\" then\n        prevValue = _name[stateChange.state_key]\n        _name[stateChange.state_key] = stateChange.state_value\n        hasChanged = (prevValue ~= _name[stateChange.state_key])\n    elseif stateChange.state_id == \"NUMBER\" then\n        prevValue = _number[stateChange.state_key]\n        _number[stateChange.state_key] = stateChange.state_value\n        hasChanged = (prevValue ~= _number[stateChange.state_key])\n    end\n    return hasChanged\nend\n\nfunction getAddressbook() -- Does what it says it does.\n    table.insert(codesArray, \"addrbook all\")\n    return true\nend\n\nfunction dialEntry(args) -- Added to Name state listbox in UI. Takes Key value as argument and passes the value of said key to command.\n    if args.NAME == nil then print(\"args.NAME is nil at line \" .. debugLine) return false end\n    local number = _number[args.NAME]\n    table.insert(stateChanges, stateChange)\n    table.insert(codesArray, \"dial manaul 64 \" .. number .. \" h323\")\n    return true\nend\n\n\nfunction getExecutionResult(availableProtocols, capabilityId, commandId, args)\n    codesArray = {}\n    stateChanges = {}\n\n    if commandId == \"QUERY_PHONEBOOK\" then\n         getAddressbook()\n    elseif commandId == \"DIAL_ENTRY\" then\n         dialEntry(args)\n    end\n\n    local genericCommType = \"TCP_UDP\"\n    local codesObj = {codes=codesArray};\n    local stateChangesObj = {state_changes=stateChanges}\n    local linkedFeedbackId = \"\"\n    local triggeredMacroObj = {}\n    return genericCommType, toJSON(codesObj), toJSON(stateChangesObj), linkedFeedbackId,  toJSON(triggeredMacroObj)\nend\n\nfunction clearPhonebook(key)    -- Removes items from the state array\n    local stateChange = {\n                        category_id=_id,\n                        state_id=\"NAME\",\n                        state_key=tostring(key),\n                        state_value=nil\n                        }\n    table.insert(stateChanges, stateChange)\nend\n\nfunction processFeedback (feedbacks, commType, previousCommand)\n    stateChanges = {}\n    local matches = {}\n    triggeredAction = {}\n    for i,v in ipairs(feedbacks) do\n        matches[i] = processFeedbackCode(v, i)\n    end\n    local matchesObj = {matches=matches}\n    local stateChangesObj = {state_changes=stateChanges}\n    return toJSON(matchesObj), toJSON(stateChangesObj), toJSON(triggeredAction)    \nend\n\nfunction processFeedbackCode (feedbackString) -- Polycom feedback example: addrbook 0. \"Last, First\" h323_spd:Auto h323_num:192.168.1.10 h323_ext:\n    local i, j, key, lastName, firstName, number = string.find(feedbackString, 'addrbook%s(%d+).%s\"(%w+),%s(%w+)\"%sh323_spd:Auto%sh323_num:(.*)%sh323_ext:')\n    if i == nil then return false end\n    fullName = firstName .. \" \" .. lastName\n    local stateChange = {\n        category_id=_id,\n        state_id=\"NAME\",\n        state_key=tostring(fullName),\n        state_value=tostring(number)\n        }\n    table.insert(stateChanges, stateChange)\n\n    local stateChange = {\n        category_id=_id,\n        state_id=\"NUMBER\",\n        state_key=tostring(fullName),\n        state_value=tostring(number)\n        }\n    table.insert(stateChanges, stateChange)\n    return true\nend"
+}
