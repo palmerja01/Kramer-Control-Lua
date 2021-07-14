@@ -46,7 +46,7 @@ function dialEntry(args) -- Added to Name state listbox in UI. Takes Key value a
     if args.NAME == nil then print("args.NAME is nil at line " .. debugLine) return false end
     local number = _number[args.NAME]
     table.insert(stateChanges, stateChange)
-    table.insert(codesArray, "dial manaul 64 " .. number .. " h323")
+    table.insert(codesArray, "dial manual 64 " .. number .. " h323")
     return true
 end
 
